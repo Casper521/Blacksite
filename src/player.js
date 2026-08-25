@@ -13,7 +13,9 @@ export class Player {
     this.callbacks = callbacks;
     this.controls = new PointerLockControls(camera, canvas);
     this.keys = new Set();
-    this.health = 100;
+    this.maxHealth = 100;
+    this.speedMultiplier = 1;
+    this.health = this.maxHealth;
     this.alive = true;
     this.grounded = false;
     this.crouching = false;
@@ -74,8 +76,14 @@ export class Player {
     this.current.copy(this.previous);
   }
 
+  setStats({ maxHealth, speedMultiplier }) {
+    this.maxHealth = maxHealth;
+    this.speedMultiplier = speedMultiplier;
+    this.health = Math.min(this.health, this.maxHealth);
+  }
+
   reset(spawn) {
-    this.health = 100;
+    this.health = this.maxHealth;
     this.alive = true;
     this.keys.clear();
     this.camera.rotation.set(0, 0, 0);
@@ -139,7 +147,7 @@ export class Player {
     forward.normalize();
     const right = new THREE.Vector3().crossVectors(forward, UP).normalize();
     const desired = forward.multiplyScalar(input.y).add(right.multiplyScalar(input.x));
-    const maxSpeed = this.crouching ? 2.4 : this.sprinting ? 8.7 : 5.1;
+    const maxSpeed = (this.crouching ? 2.4 : this.sprinting ? 8.7 : 5.1) * this.speedMultiplier;
     desired.multiplyScalar(maxSpeed);
 
     const accel = this.grounded ? (this.moving ? 14 : 10) : 3.2;

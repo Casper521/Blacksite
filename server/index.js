@@ -1,12 +1,99 @@
-import { WebSocketServer } from "ws";
+import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { WebSocketServer } from "ws";
+import {
+  GOOGLE_CLIENT_ID,
+  currentSession,
+  login,
+  loginWithGoogle,
+  register,
+  saveProfile,
+} from "./auth.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const SNAPSHOT_HZ = 20;
 const KILL_LIMIT = Number(process.env.KILL_LIMIT ?? 15);
 const ROUND_RESET_DELAY = 6000;
 
-const server = new WebSocketServer({ port: PORT });
+/* ------------------------------- HTTP API ------------------------------- */
+
+const CORS = {
+  "Access-Control-Allow-Origin": process.env.ALLOW_ORIGIN ?? "*",
+  "Access-Control-Allow-Headers": "content-type, authorization",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+};
+
+function respond(response, status, body) {
+  response.writeHead(status, { "content-type": "application/json", ...CORS });
+  response.end(JSON.stringify(body));
+}
+
+function readBody(request) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += chunk;
+      if (raw.length > 1e6) reject(new Error("Payload too large"));
+    });
+    request.on("end", () => {
+      if (!raw) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    request.on("error", reject);
+  });
+}
+
+const bearer = (request) => (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+
+const routes = {
+  "POST /api/auth/register": async (request) => {
+    const body = await readBody(request);
+    return register(body.email, body.password, body.callsign);
+  },
+  "POST /api/auth/login": async (request) => {
+    const body = await readBody(request);
+    return login(body.email, body.password);
+  },
+  "POST /api/auth/google": async (request) => {
+    const body = await readBody(request);
+    return loginWithGoogle(body.credential);
+  },
+  "GET /api/auth/session": async (request) => currentSession(bearer(request)),
+  "GET /api/config": async () => ({ googleClientId: GOOGLE_CLIENT_ID, killLimit: KILL_LIMIT }),
+  "PUT /api/profile": async (request) => {
+    const body = await readBody(request);
+    return saveProfile(bearer(request), body.profile);
+  },
+};
+
+const server = createServer(async (request, response) => {
+  if (request.method === "OPTIONS") {
+    response.writeHead(204, CORS);
+    response.end();
+    return;
+  }
+
+  const url = new URL(request.url, `http://${request.headers.host}`);
+  const handler = routes[`${request.method} ${url.pathname}`];
+  if (!handler) {
+    respond(response, 404, { error: "Not found" });
+    return;
+  }
+
+  try {
+    respond(response, 200, await handler(request));
+  } catch (error) {
+    respond(response, error.status ?? 500, { error: error.message ?? "Server error" });
+  }
+});
+
+/* ------------------------------ PvP relay ------------------------------ */
+
+const wss = new WebSocketServer({ server });
 const players = new Map();
 let mapSeed = (Math.random() * 0xffffffff) >>> 0;
 let roundOver = false;
@@ -44,7 +131,7 @@ function resetRound() {
   broadcast({ t: "round", seed: mapSeed, players: scoreboard() });
 }
 
-server.on("connection", (socket) => {
+wss.on("connection", (socket) => {
   const id = randomUUID().slice(0, 8);
   const player = {
     id,
@@ -156,4 +243,7 @@ setInterval(() => {
   });
 }, 1000 / SNAPSHOT_HZ);
 
-console.log(`Blacksite PvP relay listening on ws://localhost:${PORT} (first to ${KILL_LIMIT} kills)`);
+server.listen(PORT, () => {
+  console.log(`Blacksite server on http://localhost:${PORT} (API + PvP relay, first to ${KILL_LIMIT} kills)`);
+  if (!GOOGLE_CLIENT_ID) console.log("Google sign-in disabled: set GOOGLE_CLIENT_ID to enable it.");
+});

@@ -8,9 +8,11 @@ import { Effects } from "./effects.js";
 import { HUD } from "./hud.js";
 import { NetClient } from "./net.js";
 import { RemotePlayers } from "./remote.js";
-import { GEM_REWARDS, getSkin, getWeapon } from "./catalog.js";
+import { GEM_REWARDS, SLOTS, getSkin, getWeapon } from "./catalog.js";
+import { applyWeaponUpgrades, operatorStats } from "./upgrades.js";
 import { randomSeed } from "./rng.js";
-import { playGunshot } from "./audio.js";
+import { playExplosion, playGunshot } from "./audio.js";
+import { Music } from "./music.js";
 
 const FIXED_STEP = 1 / 60;
 const MAX_STEPS = 5;
@@ -71,8 +73,12 @@ export class Game {
     this.hud = new HUD();
     this.remotes = new RemotePlayers(this.scene);
 
+    this.music = new Music();
+    this.music.setEnabled(profile.settings.music);
+    this.music.setVolume(profile.settings.musicVolume);
+
     this.player = new Player(this.camera, this.canvas, this.world, {
-      onDamage: (health) => this.hud.health(health),
+      onDamage: (health) => this.hud.health(health, this.player.maxHealth),
       onDeath: () => this.handlePlayerDeath(),
       onLockBlocked: () => this.callbacks.onLockBlocked?.(),
     });
@@ -87,7 +93,9 @@ export class Game {
       onState: (weapon) => this.hud.ammo(weapon),
       onImpact: (hit, damage, headshot) => this.handleImpact(hit, damage, headshot),
       onFire: (position) => this.handleFire(position),
+      onThrow: (payload) => this.spawnGrenade(payload),
     });
+    this.grenades = [];
 
     this.net = new NetClient({
       onStatus: (status) => this.hud.netStatus(status === "online" ? "online" : status),
@@ -169,8 +177,19 @@ export class Game {
     return points[Math.floor(Math.random() * points.length)].clone().setY(1.05);
   }
 
+  displayName() {
+    return this.profile.data.callsign || "OPERATOR";
+  }
+
   equipLoadout() {
-    this.weapon.equip(getWeapon(this.profile.data.equippedWeapon), getSkin(this.profile.data.equippedSkin));
+    const operator = this.profile.operatorLevels();
+    const specs = {};
+    for (const slot of SLOTS) {
+      const base = getWeapon(this.profile.equippedIn(slot.id));
+      specs[slot.id] = applyWeaponUpgrades(base, this.profile.weaponLevels(base.id), operator);
+    }
+    this.weapon.setLoadout(specs, getSkin(this.profile.data.equippedSkin), this.profile.data.activeSlot ?? "rifle");
+    this.player.setStats(operatorStats(operator));
   }
 
   // Kept synchronous for the campaign so pointer lock still runs inside the click gesture.
@@ -186,11 +205,19 @@ export class Game {
     this.respawnCountdown = 0;
     this.lastAttacker = null;
     this.hud.setMode(mode);
+    this.hud.setOperator(this.displayName());
     this.hud.respawn(null);
     this.hud.gems(this.profile.gems);
     this.equipLoadout();
     this.weapon.enabled = true;
     this.remotes.clear();
+    for (const nade of this.grenades) {
+      this.scene.remove(nade.mesh);
+      nade.mesh.geometry.dispose();
+      nade.mesh.material.dispose();
+    }
+    this.grenades = [];
+    this.music.setState("patrol");
 
     if (mode === "pvp") return this.startOnline();
 
@@ -198,30 +225,30 @@ export class Game {
     this.buildWorld(randomSeed());
     this.bots.spawn(this.spawnPoints, CAMPAIGN_BOTS);
     this.player.reset(this.randomSpawn());
-    this.hud.health(100);
+    this.hud.health(this.player.health, this.player.maxHealth);
     this.player.lock();
     return Promise.resolve({ gated: false });
   }
 
   async startOnline() {
-    this.hud.netStatus("connecting", "CONNECTING TO RELAY");
+    this.hud.netStatus("connecting", `CONNECTING AS ${this.displayName()}`);
     const welcome = await this.net.connect({
-      name: this.profile.data.callsign,
-      weapon: this.profile.data.equippedWeapon,
+      name: this.displayName(),
+      weapon: this.profile.equippedIn("rifle"),
       skin: this.profile.data.equippedSkin,
     });
     this.buildWorld(welcome.seed);
     for (const peer of welcome.players) this.remotes.add(peer);
     this.reportOperators();
     this.hud.setScoreboard(
-      [...welcome.players, { id: this.net.id, name: this.profile.data.callsign, score: 0 }],
+      [...welcome.players, { id: this.net.id, name: this.displayName(), score: 0 }],
       this.net.id,
       this.net.killLimit
     );
     this.bots.clear();
     this.updateObjective(0);
     this.player.reset(this.randomSpawn());
-    this.hud.health(100);
+    this.hud.health(this.player.health, this.player.maxHealth);
     // The relay handshake consumes the click activation, so the player re-enters through a gate.
     return { gated: true, operators: welcome.players.length + 1 };
   }
@@ -229,7 +256,7 @@ export class Game {
   reportOperators() {
     if (this.mode !== "pvp" || !this.net.connected) return;
     const count = this.remotes.players.size + 1;
-    this.hud.netStatus("online", `RELAY ONLINE · ${count} OPERATOR${count === 1 ? "" : "S"}`);
+    this.hud.netStatus("online", `${this.displayName()} · RELAY ONLINE · ${count} OPERATOR${count === 1 ? "" : "S"}`);
   }
 
   resume() {
@@ -247,6 +274,7 @@ export class Game {
       this.profile.registerMission();
     }
     this.net.disconnect();
+    this.music.setState("lobby");
     this.player.controls.unlock();
     this.callbacks.onEnd?.({
       victory,
@@ -308,6 +336,77 @@ export class Game {
     this.effects.impact(hit.point, normal, hit.object.userData.surface);
   }
 
+  spawnGrenade({ origin, velocity, damage, radius, fuse }) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0x3a4a32, roughness: 0.55, metalness: 0.45 })
+    );
+    mesh.position.copy(origin);
+    this.scene.add(mesh);
+    this.grenades.push({
+      mesh,
+      velocity: velocity.clone(),
+      damage,
+      radius,
+      life: fuse,
+      ray: new THREE.Raycaster(),
+    });
+  }
+
+  explodeGrenade(nade) {
+    const point = nade.mesh.position.clone();
+    this.scene.remove(nade.mesh);
+    nade.mesh.geometry.dispose();
+    nade.mesh.material.dispose();
+    this.effects.explosion(point);
+    playExplosion();
+
+    for (const bot of this.bots.bots) {
+      if (bot.dead) continue;
+      const distance = bot.group.position.distanceTo(point);
+      if (distance >= nade.radius) continue;
+      bot.takeDamage(nade.damage * (1 - distance / nade.radius), false);
+      this.hud.hit(false);
+    }
+    for (const remote of this.remotes.players.values()) {
+      if (!remote.alive) continue;
+      const distance = remote.group.position.distanceTo(point);
+      if (distance >= nade.radius) continue;
+      this.net.sendHit(remote.id, nade.damage * (1 - distance / nade.radius), false);
+      this.hud.hit(false);
+    }
+  }
+
+  updateGrenades(dt) {
+    for (let index = this.grenades.length - 1; index >= 0; index--) {
+      const nade = this.grenades[index];
+      nade.life -= dt;
+      nade.velocity.y -= 18 * dt;
+      const move = nade.velocity.clone().multiplyScalar(dt);
+      const length = move.length() || 0.001;
+      nade.ray.set(nade.mesh.position.clone(), move.clone().normalize());
+      nade.ray.far = length + 0.04;
+      const hits = nade.ray.intersectObjects(this.arena.colliders, true);
+      if (hits[0]) {
+        nade.mesh.position.copy(hits[0].point);
+        if (nade.life < 0.15) {
+          this.explodeGrenade(nade);
+          this.grenades.splice(index, 1);
+          continue;
+        }
+        const normal = hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld);
+        nade.velocity.reflect(normal).multiplyScalar(0.38);
+        nade.mesh.position.addScaledVector(normal, 0.08);
+      } else {
+        nade.mesh.position.add(move);
+      }
+      if (nade.life <= 0) {
+        this.explodeGrenade(nade);
+        this.grenades.splice(index, 1);
+      }
+    }
+  }
+
   handleRemoteShot(message) {
     const origin = new THREE.Vector3(...message.o);
     const end = new THREE.Vector3(...message.e);
@@ -339,7 +438,7 @@ export class Game {
   handleRoundReset(message) {
     this.buildWorld(message.seed);
     this.player.reset(this.randomSpawn());
-    this.hud.health(100);
+    this.hud.health(this.player.health, this.player.maxHealth);
     this.hud.setScoreboard(message.players, this.net.id, this.net.killLimit);
     this.hud.feed("NEW SECTOR DEPLOYED");
   }
@@ -359,8 +458,8 @@ export class Game {
     const spawn = this.randomSpawn();
     this.player.reset(spawn);
     this.weapon.enabled = true;
-    this.weapon.reset();
-    this.hud.health(100);
+    this.weapon.refill();
+    this.hud.health(this.player.health, this.player.maxHealth);
     this.hud.respawn(null);
     this.lastAttacker = null;
     this.net.sendRespawn(spawn);
@@ -385,11 +484,42 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
+  // Music intensity tracks how close and how alert the nearest threat is.
+  updateMusicThreat() {
+    if (!this.player.alive) {
+      this.music.setThreat(0.15);
+      return;
+    }
+    const origin = this.camera.position;
+    let threat = 0;
+    if (this.mode === "campaign") {
+      for (const bot of this.bots.bots) {
+        if (bot.state === "dead") continue;
+        const distance = bot.group.position.distanceTo(origin);
+        const engaged = bot.state === "chase" || bot.state === "attack";
+        threat = Math.max(threat, (engaged ? 1 : 0.5) * Math.max(0, 1 - distance / 45));
+      }
+    } else {
+      for (const remote of this.remotes.players.values()) {
+        const distance = remote.group.position.distanceTo(origin);
+        threat = Math.max(threat, Math.max(0, 1 - distance / 55));
+      }
+      threat = Math.max(threat, 0.4);
+    }
+    this.music.setThreat(threat);
+  }
+
   stepFixed(dt) {
     this.elapsed += dt;
     this.player.stepFixed(dt);
     this.world.step(dt);
     this.bots.stepFixed(dt, this.elapsed);
+    this.updateGrenades(dt);
+    this.threatTimer = (this.threatTimer ?? 0) + dt;
+    if (this.threatTimer > 0.3) {
+      this.threatTimer = 0;
+      this.updateMusicThreat();
+    }
 
     if (this.mode === "pvp") {
       this.net.sendState(this.elapsed, this.player);

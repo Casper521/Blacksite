@@ -43,6 +43,28 @@ export class Effects {
     this.items.push({ object: mark, life: 14, maxLife: 14 });
   }
 
+  explosion(point) {
+    for (let i = 0; i < 18; i++) {
+      const particle = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04 + Math.random() * 0.08, 5, 4),
+        new THREE.MeshBasicMaterial({ color: i < 6 ? 0xffe18a : 0xff6a32, transparent: true })
+      );
+      particle.position.copy(point);
+      const velocity = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.7, Math.random() - 0.5)
+        .normalize()
+        .multiplyScalar(4 + Math.random() * 6);
+      this.scene.add(particle);
+      this.items.push({ object: particle, velocity, life: 0.35 + Math.random() * 0.25, maxLife: 0.6, gravity: true });
+    }
+    const flash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85 })
+    );
+    flash.position.copy(point);
+    this.scene.add(flash);
+    this.items.push({ object: flash, life: 0.12, maxLife: 0.12, scale: 8 });
+  }
+
   update(dt) {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const item = this.items[i];
@@ -51,6 +73,7 @@ export class Effects {
         item.object.position.addScaledVector(item.velocity, dt);
         if (item.gravity) item.velocity.y -= 7 * dt;
       }
+      if (item.scale) item.object.scale.addScalar(item.scale * dt);
       const opacity = Math.min(1, item.life / Math.min(0.2, item.maxLife));
       if (item.object.material) item.object.material.opacity = opacity;
       if (item.life <= 0) {

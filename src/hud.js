@@ -1,4 +1,5 @@
 import { playHitmarker } from "./audio.js";
+import { SLOTS } from "./catalog.js";
 
 const query = (selector) => document.querySelector(selector);
 
@@ -13,6 +14,8 @@ export class HUD {
     this.weaponLabel = query("#weapon-label");
     this.weaponCaliber = query("#weapon-caliber");
     this.reloadPrompt = query("#reload-prompt");
+    this.slots = query("#weapon-slots");
+    this.operatorName = query("#operator-name");
     this.objectiveText = query("#objective-text");
     this.objectiveCount = query("#objective-count");
     this.crosshair = query("#crosshair");
@@ -29,10 +32,11 @@ export class HUD {
     this.toastTimer = 0;
   }
 
-  health(value) {
+  health(value, max = 100) {
+    const ratio = Math.max(0, Math.min(1, value / max));
     this.healthValue.textContent = Math.ceil(value);
-    this.healthFill.style.width = `${value}%`;
-    this.healthFill.style.background = value < 30 ? "var(--danger)" : "var(--lime)";
+    this.healthFill.style.width = `${ratio * 100}%`;
+    this.healthFill.style.background = ratio < 0.3 ? "var(--danger)" : "var(--lime)";
     this.damageTimer = 0.22;
     this.damageOverlay.style.opacity = `${0.18 + (1 - value / 100) * 0.45}`;
   }
@@ -40,12 +44,26 @@ export class HUD {
   ammo(weapon) {
     this.weaponLabel.textContent = weapon.spec.name;
     this.weaponCaliber.textContent = weapon.spec.caliber;
-    this.ammoCurrent.textContent = weapon.magazine.toString().padStart(2, "0");
-    this.ammoReserve.textContent = weapon.reserve.toString().padStart(3, "0");
-    const low = weapon.magazine <= Math.max(2, Math.ceil(weapon.spec.magazine * 0.25));
+    if (weapon.spec.kind === "melee") {
+      this.ammoCurrent.textContent = "—";
+      this.ammoReserve.textContent = "MELEE";
+    } else {
+      this.ammoCurrent.textContent = weapon.magazine.toString().padStart(2, "0");
+      this.ammoReserve.textContent = weapon.reserve.toString().padStart(3, "0");
+    }
+    const low = weapon.spec.kind !== "melee" && weapon.magazine <= Math.max(2, Math.ceil(weapon.spec.magazine * 0.25));
     this.ammoPanel.classList.toggle("low", low && !weapon.reloading);
     this.ammoPanel.classList.toggle("reloading", weapon.reloading);
-    this.reloadPrompt.innerHTML = weapon.reloading ? "RELOADING..." : "R&nbsp;&nbsp;RELOAD";
+    this.reloadPrompt.innerHTML = weapon.spec.kind === "melee"
+      ? "LMB&nbsp;&nbsp;SLASH"
+      : weapon.spec.kind === "grenade"
+        ? (weapon.reloading ? "RELOADING..." : "LMB&nbsp;&nbsp;THROW")
+        : weapon.reloading ? "RELOADING..." : "R&nbsp;&nbsp;RELOAD";
+    this.slots.innerHTML = SLOTS.map((slot) => {
+      const spec = weapon.specs[slot.id];
+      const active = weapon.slot === slot.id;
+      return `<span class="slot${active ? " active" : ""}"><b>${slot.key}</b>${spec?.name ?? slot.name}</span>`;
+    }).join("");
   }
 
   objective(text, count) {
@@ -120,6 +138,10 @@ export class HUD {
       this.scoreboard.classList.add("hidden");
       this.netStatus("hidden");
     }
+  }
+
+  setOperator(name) {
+    this.operatorName.textContent = name;
   }
 
   update(dt, player, weapon) {

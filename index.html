@@ -47,7 +47,7 @@
 
         <div class="health-panel">
           <div class="health-top">
-            <span>OPERATOR</span>
+            <span id="operator-name">OPERATOR</span>
             <strong id="health-value">100</strong>
           </div>
           <div class="health-track"><div id="health-fill"></div></div>
@@ -60,6 +60,7 @@
             <span class="divider">/</span>
             <span id="ammo-reserve">150</span>
           </div>
+          <div id="weapon-slots" class="weapon-slots"></div>
           <div id="reload-prompt">R&nbsp;&nbsp;RELOAD</div>
         </div>
 
@@ -68,6 +69,7 @@
           <span><kbd>SHIFT</kbd> SPRINT</span>
           <span><kbd>C</kbd> CROUCH</span>
           <span><kbd>RMB</kbd> ADS</span>
+          <span><kbd>1–4</kbd> WEAPONS</span>
           <span><kbd>R</kbd> RELOAD</span>
         </div>
       </div>
@@ -84,10 +86,7 @@
             <p class="eyebrow">JOINT TASK FORCE // URBAN TRAINING</p>
             <h1>ARMORY</h1>
             <div class="rule"></div>
-            <label class="field">
-              <span>CALLSIGN</span>
-              <input id="callsign-input" type="text" maxlength="14" autocomplete="off" spellcheck="false" />
-            </label>
+            <p id="playing-as" class="playing-as">PLAYING AS <b>OPERATOR</b> · SET YOUR NAME IN ACCOUNT</p>
             <div class="mode-actions">
               <button id="deploy-campaign" type="button">
                 <span>DEPLOY SOLO</span>
@@ -99,6 +98,11 @@
               </button>
             </div>
             <p id="lobby-status" data-tone="neutral">Earn gems for every hostile you drop, then spend them here.</p>
+            <div class="settings-row">
+              <button id="music-toggle" class="chip" type="button">MUSIC ON</button>
+              <input id="music-volume" type="range" min="0" max="100" step="1" aria-label="Music volume" />
+              <span id="account-chip" class="chip muted">GUEST · SAVED ON THIS DEVICE</span>
+            </div>
             <div class="key-grid">
               <span><kbd>WASD</kbd> MOVE</span>
               <span><kbd>SHIFT</kbd> SPRINT</span>
@@ -113,9 +117,60 @@
             <div class="tabs">
               <button data-tab="weapons" class="active" type="button">WEAPONS</button>
               <button data-tab="skins" type="button">FINISHES</button>
+              <button data-tab="upgrades" type="button">UPGRADES</button>
+              <button data-tab="account" type="button">ACCOUNT</button>
             </div>
             <div id="weapon-grid" class="gear-grid"></div>
             <div id="skin-grid" class="gear-grid hidden"></div>
+            <div id="upgrade-panel" class="upgrade-panel hidden"></div>
+            <div id="account-panel" class="account-panel hidden">
+              <label class="display-name-field">
+                PVP DISPLAY NAME
+                <input id="account-name" type="text" maxlength="14" autocomplete="nickname" spellcheck="false" />
+              </label>
+              <p class="account-copy">This name shows on the scoreboard, nameplates, and killfeed when you connect to PvP.</p>
+              <div id="account-guest">
+                <h3>SAVE YOUR PROGRESS</h3>
+                <p class="account-copy">
+                  Link an account to keep your gems, gear and upgrades across devices.
+                </p>
+                <form id="auth-form" autocomplete="on">
+                  <label>
+                    EMAIL
+                    <input id="auth-email" type="email" name="email" placeholder="operator@blacksite.gg" required />
+                  </label>
+                  <label>
+                    PASSWORD
+                    <input
+                      id="auth-password"
+                      type="password"
+                      name="password"
+                      placeholder="8+ characters"
+                      minlength="8"
+                      required
+                    />
+                  </label>
+                  <div class="auth-actions">
+                    <button id="auth-signin" type="submit">SIGN IN</button>
+                    <button id="auth-register" type="button" class="ghost">CREATE ACCOUNT</button>
+                  </div>
+                </form>
+                <div class="auth-divider"><span>OR</span></div>
+                <div id="google-button"></div>
+                <p id="google-note" class="account-note hidden"></p>
+              </div>
+              <div id="account-active" class="hidden">
+                <h3>ACCOUNT LINKED</h3>
+                <dl class="account-facts">
+                  <div><dt>DISPLAY NAME</dt><dd id="account-callsign">—</dd></div>
+                  <div><dt>EMAIL</dt><dd id="account-email">—</dd></div>
+                  <div><dt>SIGN-IN</dt><dd id="account-provider">—</dd></div>
+                  <div><dt>CLOUD SAVE</dt><dd id="account-sync">Synced</dd></div>
+                </dl>
+                <button id="auth-signout" type="button" class="ghost">SIGN OUT</button>
+              </div>
+              <p id="auth-status" class="account-note" role="status"></p>
+            </div>
           </section>
         </div>
       </div>
