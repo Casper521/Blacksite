@@ -28,8 +28,22 @@ export class HUD {
     this.netStatusEl = query("#net-status");
     this.respawnOverlay = query("#respawn-overlay");
     this.respawnTimer = query("#respawn-timer");
+    this.sectorName = query("#sector-name");
     this.damageTimer = 0;
     this.toastTimer = 0;
+    this.hintTimer = 8;
+    this.controlsHint = query(".controls-hint");
+    this.setLive(false);
+  }
+
+  setLive(live) {
+    this.root.classList.toggle("live", live);
+    this.root.setAttribute("aria-hidden", live ? "false" : "true");
+    if (live) this.hintTimer = 8;
+  }
+
+  sector(name) {
+    this.sectorName.textContent = name ? name.toUpperCase() : "";
   }
 
   health(value, max = 100) {
@@ -54,6 +68,7 @@ export class HUD {
     const low = weapon.spec.kind !== "melee" && weapon.magazine <= Math.max(2, Math.ceil(weapon.spec.magazine * 0.25));
     this.ammoPanel.classList.toggle("low", low && !weapon.reloading);
     this.ammoPanel.classList.toggle("reloading", weapon.reloading);
+    this.ammoPanel.classList.toggle("special", weapon.spec.kind !== "firearm");
     this.reloadPrompt.innerHTML = weapon.spec.kind === "melee"
       ? "LMB&nbsp;&nbsp;SLASH"
       : weapon.spec.kind === "grenade"
@@ -151,5 +166,7 @@ export class HUD {
     const spread = weapon.adsAmount > 0.8 ? 3 : 7 + speed * 1.35 + (weapon.trigger ? 5 : 0);
     this.crosshair.style.setProperty("--gap", `${spread.toFixed(1)}px`);
     this.crosshair.classList.toggle("ads", weapon.adsAmount > 0.75);
+    this.hintTimer -= dt;
+    this.controlsHint?.classList.toggle("fade", this.hintTimer <= 0);
   }
 }

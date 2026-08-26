@@ -16,15 +16,18 @@ html, body, #app {
   background: #080b0c;
   color: #eef0e8;
   font-family: Inter, system-ui, sans-serif;
+  user-select: none;
 }
 
 #game { display: block; width: 100%; height: 100%; }
 .hidden { display: none !important; }
+input, textarea { user-select: text; }
 
 #hud, #vignette, #damage-overlay { position: fixed; inset: 0; pointer-events: none; }
 #vignette { background: radial-gradient(circle, transparent 48%, rgba(0, 0, 0, 0.4) 100%); z-index: 2; }
 #damage-overlay { z-index: 4; opacity: 0; background: radial-gradient(circle, transparent 25%, rgba(155, 0, 0, 0.8)); transition: opacity 0.12s; }
-#hud { z-index: 5; font-family: "Barlow Condensed", sans-serif; text-shadow: 0 2px 3px #000; }
+#hud { z-index: 5; font-family: "Barlow Condensed", sans-serif; text-shadow: 0 2px 3px #000; opacity: 0; transition: opacity 0.2s; }
+#hud.live { opacity: 1; }
 
 .gem {
   display: inline-block;
@@ -53,6 +56,7 @@ html, body, #app {
 .mission-label { color: var(--lime); font-size: 10px; }
 .objective-count { padding-left: 12px; border-left: 1px solid #68705f; opacity: 0.72; }
 .objective-count b { color: var(--lime); }
+.sector-name { padding-left: 12px; border-left: 1px solid #68705f; opacity: 0.55; letter-spacing: 0.18em; font-size: 10px; }
 
 .gem-hud {
   position: absolute;
@@ -193,8 +197,7 @@ html, body, #app {
 .ammo-line span { font-size: 23px; opacity: 0.65; }
 .ammo-line .divider { opacity: 0.25; }
 #reload-prompt { height: 12px; color: var(--lime); font-size: 11px; letter-spacing: 0.18em; opacity: 0; }
-.low #reload-prompt { animation: pulse 1s infinite; }
-.reloading #reload-prompt { opacity: 1; }
+.low #reload-prompt, .reloading #reload-prompt, .special #reload-prompt { opacity: 1; }
 
 .controls-hint {
   position: absolute;
@@ -207,6 +210,7 @@ html, body, #app {
   letter-spacing: 0.1em;
   opacity: 0.55;
 }
+.controls-hint.fade { opacity: 0; transition: opacity 0.8s; }
 kbd { padding: 3px 5px; font: 600 10px Inter, sans-serif; border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(0, 0, 0, 0.45); }
 
 /* ---------- Screens ---------- */
@@ -216,7 +220,8 @@ kbd { padding: 3px 5px; font: 600 10px Inter, sans-serif; border: 1px solid rgba
   z-index: 10;
   display: grid;
   place-items: center;
-  background: linear-gradient(90deg, rgba(5, 8, 8, 0.96), rgba(5, 8, 8, 0.72)), radial-gradient(circle at 78% 25%, #2f3d34, #060808 58%);
+  background: linear-gradient(90deg, rgba(5, 8, 8, 0.82), rgba(5, 8, 8, 0.38) 58%, rgba(5, 8, 8, 0.2));
+  backdrop-filter: blur(8px);
 }
 .scanline { position: absolute; inset: 0; opacity: 0.07; background: repeating-linear-gradient(0deg, transparent 0 3px, #fff 4px); pointer-events: none; }
 
@@ -457,6 +462,20 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.12); border-left-color: v
 .account-facts dt { font: 600 8px Inter, sans-serif; letter-spacing: 0.2em; color: #8d938b; }
 .account-facts dd { margin: 0; font: 500 12px Inter, sans-serif; color: #dfe3d9; }
 
+.loadout-rack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-width: 360px;
+  margin: 0 0 22px;
+}
+.rack-slot {
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border-left: 2px solid var(--lime);
+}
+.rack-slot span { display: block; font: 600 8px Inter, sans-serif; letter-spacing: 0.18em; color: #8d938b; }
+.rack-slot b { font: 700 13px "Barlow Condensed", sans-serif; letter-spacing: 0.08em; }
 .playing-as { margin: 0 0 18px; font: 600 11px Inter, sans-serif; letter-spacing: 0.16em; color: #9aa197; }
 .playing-as b { color: var(--lime); }
 .display-name-field { display: block; margin-bottom: 10px; font: 600 9px Inter, sans-serif; letter-spacing: 0.22em; color: #8d938b; }
@@ -502,4 +521,5 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.12); border-left-color: v
   .ammo-line strong { font-size: 40px; }
   #killfeed, #scoreboard { right: 12px; }
   .key-grid { grid-template-columns: 1fr; }
+  .loadout-rack { grid-template-columns: 1fr; }
 }

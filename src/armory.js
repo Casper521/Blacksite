@@ -32,6 +32,7 @@ export class Armory {
     this.accountPanel = document.querySelector("#account-panel");
     this.gemLabel = document.querySelector("#lobby-gems");
     this.playingAs = document.querySelector("#playing-as");
+    this.loadoutRack = document.querySelector("#loadout-rack");
     this.status = document.querySelector("#lobby-status");
     this.tabs = [...document.querySelectorAll("[data-tab]")];
     this.tab = "weapons";
@@ -168,7 +169,15 @@ export class Armory {
 
   render() {
     this.gemLabel.textContent = this.profile.gems.toLocaleString();
-    this.playingAs.innerHTML = `PLAYING AS <b>${this.profile.data.callsign}</b> · SET YOUR NAME IN ACCOUNT`;
+    if (this.playingAs) {
+      this.playingAs.innerHTML = `PLAYING AS <b>${this.profile.data.callsign}</b> · SET YOUR NAME IN ACCOUNT`;
+    }
+    if (this.loadoutRack) {
+      this.loadoutRack.innerHTML = SLOTS.map((slot) => {
+        const weapon = getWeapon(this.profile.equippedIn(slot.id));
+        return `<div class="rack-slot"><span>${slot.key} ${slot.name}</span><b>${weapon.name}</b></div>`;
+      }).join("");
+    }
     const operator = this.profile.operatorLevels();
 
     this.weaponGrid.innerHTML = "";

@@ -142,6 +142,10 @@ export class Game {
     window.addEventListener("resize", () => this.resize());
     this.resize();
     this.hud.gems(this.profile.gems);
+    this.weapon.group.visible = false;
+    this.preview = true;
+    this.previewTime = 0;
+    this.buildWorld(randomSeed());
     this.animate();
   }
 
@@ -169,6 +173,7 @@ export class Game {
     this.applyTheme(theme);
     this.spawnPoints = spawnPoints;
     this.callbacks.onSector?.(theme.name);
+    this.hud.sector(theme.name);
     return theme;
   }
 
@@ -210,6 +215,9 @@ export class Game {
     this.hud.gems(this.profile.gems);
     this.equipLoadout();
     this.weapon.enabled = true;
+    this.weapon.group.visible = true;
+    this.preview = false;
+    this.hud.setLive(true);
     this.remotes.clear();
     for (const nade of this.grenades) {
       this.scene.remove(nade.mesh);
@@ -263,6 +271,19 @@ export class Game {
     if (!this.finished) this.player.lock();
   }
 
+  returnToMenu() {
+    this.started = false;
+    this.running = false;
+    this.finished = true;
+    this.weapon.enabled = false;
+    this.weapon.group.visible = false;
+    this.hud.setLive(false);
+    this.preview = true;
+    this.net.disconnect();
+    this.music.setState("lobby");
+    if (!this.spawnPoints?.length) this.buildWorld(randomSeed());
+  }
+
   end(victory, summary) {
     if (this.finished) return;
     this.finished = true;
@@ -275,6 +296,7 @@ export class Game {
     }
     this.net.disconnect();
     this.music.setState("lobby");
+    this.hud.setLive(false);
     this.player.controls.unlock();
     this.callbacks.onEnd?.({
       victory,
@@ -469,7 +491,9 @@ export class Game {
     requestAnimationFrame(() => this.animate());
     const frame = Math.min(this.clock.getDelta(), 0.25);
 
-    if (this.running) {
+    if (this.preview && !this.started) {
+      this.orbitPreview(frame);
+    } else if (this.running) {
       this.accumulator += frame;
       let steps = 0;
       while (this.accumulator >= FIXED_STEP && steps < MAX_STEPS) {
@@ -482,6 +506,13 @@ export class Game {
     }
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  orbitPreview(dt) {
+    this.previewTime += dt;
+    const t = this.previewTime * 0.07;
+    this.camera.position.set(Math.cos(t) * 36, 12 + Math.sin(t * 0.55) * 2.4, Math.sin(t) * 36);
+    this.camera.lookAt(0, 2.4, 0);
   }
 
   // Music intensity tracks how close and how alert the nearest threat is.

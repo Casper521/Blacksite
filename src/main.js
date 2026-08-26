@@ -96,6 +96,7 @@ function openArmory() {
   pauseScreen.classList.add("hidden");
   endScreen.classList.add("hidden");
   readyScreen.classList.add("hidden");
+  game.returnToMenu();
   armory.render();
   game.music.setState("lobby");
 }
@@ -137,6 +138,7 @@ document.querySelector("#enter-button").addEventListener("click", () => game.res
 document.querySelector("#resume-button").addEventListener("click", () => game.resume());
 document.querySelector("#abort-button").addEventListener("click", () => {
   game.end(false, "You withdrew from the sector.");
+  game.returnToMenu();
   openArmory();
 });
 document.querySelector("#restart-button").addEventListener("click", () => {
