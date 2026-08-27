@@ -9,8 +9,10 @@ import {
   register,
   saveProfile,
 } from "./auth.js";
+import { servePublic } from "./static.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
+const HOST = process.env.HOST ?? "0.0.0.0";
 const SNAPSHOT_HZ = 20;
 const KILL_LIMIT = Number(process.env.KILL_LIMIT ?? 15);
 const ROUND_RESET_DELAY = 6000;
@@ -68,6 +70,7 @@ const routes = {
     const body = await readBody(request);
     return saveProfile(bearer(request), body.profile);
   },
+  "GET /api/health": async () => ({ ok: true }),
 };
 
 const server = createServer(async (request, response) => {
@@ -80,6 +83,7 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const handler = routes[`${request.method} ${url.pathname}`];
   if (!handler) {
+    if (request.method === "GET" && servePublic(request, response)) return;
     respond(response, 404, { error: "Not found" });
     return;
   }
@@ -243,7 +247,7 @@ setInterval(() => {
   });
 }, 1000 / SNAPSHOT_HZ);
 
-server.listen(PORT, () => {
-  console.log(`Blacksite server on http://localhost:${PORT} (API + PvP relay, first to ${KILL_LIMIT} kills)`);
+server.listen(PORT, HOST, () => {
+  console.log(`Blacksite listening on http://${HOST}:${PORT} (site + API + PvP, first to ${KILL_LIMIT} kills)`);
   if (!GOOGLE_CLIENT_ID) console.log("Google sign-in disabled: set GOOGLE_CLIENT_ID to enable it.");
 });

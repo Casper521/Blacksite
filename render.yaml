@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: blacksite
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: ALLOW_ORIGIN
+        value: https://casperlee.org

@@ -1,8 +1,9 @@
 const defaultUrl = () => {
-  const configured = import.meta.env?.VITE_PVP_URL;
-  if (configured) return configured;
+  if (import.meta.env?.VITE_PVP_URL) return import.meta.env.VITE_PVP_URL;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${location.hostname || "localhost"}:8787`;
+  const local = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  if (local && location.port !== "8787") return `${protocol}//${location.hostname}:8787`;
+  return `${protocol}//${location.host}`;
 };
 
 export class NetClient {

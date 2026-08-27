@@ -160,19 +160,27 @@ export class Weapon {
 
     this.equip(this.spec, this.skin);
 
-    window.addEventListener("mousedown", (event) => {
-      if (!this.player.controls.isLocked || !this.enabled) return;
-      if (event.button === 0) this.trigger = true;
+    this.clockTime = 0;
+    this.onPointerDown = (event) => {
+      if (!this.enabled || !this.player.alive) return;
+      if (event.target.closest?.(".screen:not(.hidden)")) return;
+      if (event.button === 0) {
+        this.trigger = true;
+        this.fire(this.clockTime);
+        if (!this.player.controls.isLocked) this.player.lock();
+      }
       if (event.button === 2) this.aiming = true;
-    });
-    window.addEventListener("mouseup", (event) => {
+    };
+    this.onPointerUp = (event) => {
       if (event.button === 0) {
         this.trigger = false;
         this.semiReady = true;
         this.emptyClicked = false;
       }
       if (event.button === 2) this.aiming = false;
-    });
+    };
+    window.addEventListener("pointerdown", this.onPointerDown, true);
+    window.addEventListener("pointerup", this.onPointerUp, true);
     window.addEventListener("contextmenu", (event) => event.preventDefault());
     window.addEventListener("keydown", (event) => {
       if (!this.enabled) return;
@@ -373,8 +381,7 @@ export class Weapon {
 
     this.player.applyRecoil(
       this.spec.recoil + Math.random() * this.spec.recoil * 0.6,
-      (Math.random() - 0.5) * this.spec.recoil * 0.7,
-      (Math.random() - 0.5) * this.spec.recoil * 0.5
+      (Math.random() - 0.5) * this.spec.recoil * 0.7
     );
     this.callbacks.onState?.(this);
   }
@@ -428,6 +435,7 @@ export class Weapon {
   }
 
   update(dt, elapsed) {
+    this.clockTime = elapsed;
     this.mixer.update(dt);
     if (this.enabled) {
       if (this.reloading) {

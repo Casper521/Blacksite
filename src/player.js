@@ -1,17 +1,43 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
-import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
 const STAND_EYE = 1.55;
 const CROUCH_EYE = 0.95;
+const LOOK_SENSITIVITY = 0.0022;
+const JUMP_SPEED = 9.4;
+const COYOTE_TIME = 0.14;
+const JUMP_BUFFER = 0.16;
+const STEP_HEIGHT = 0.55;
+
+class PointerLock {
+  constructor(element) {
+    this.domElement = element;
+    this.isLocked = false;
+    this.listeners = { lock: [], unlock: [] };
+    document.addEventListener("pointerlockchange", () => {
+      const locked = document.pointerLockElement === this.domElement;
+      if (locked === this.isLocked) return;
+      this.isLocked = locked;
+      for (const listener of this.listeners[locked ? "lock" : "unlock"]) listener();
+    });
+  }
+
+  addEventListener(type, listener) {
+    this.listeners[type]?.push(listener);
+  }
+
+  unlock() {
+    if (document.pointerLockElement === this.domElement) document.exitPointerLock();
+  }
+}
 
 export class Player {
   constructor(camera, canvas, world, callbacks = {}) {
     this.camera = camera;
     this.world = world;
     this.callbacks = callbacks;
-    this.controls = new PointerLockControls(camera, canvas);
+    this.controls = new PointerLock(canvas);
     this.keys = new Set();
     this.maxHealth = 100;
     this.speedMultiplier = 1;
@@ -23,11 +49,18 @@ export class Player {
     this.moving = false;
     this.bobTime = 0;
     this.eyeHeight = STAND_EYE;
+    this.yaw = 0;
+    this.pitch = 0;
     this.mouseDelta = new THREE.Vector2();
     this.velocity = new THREE.Vector3();
     this.previous = new THREE.Vector3(0, 1.05, 28);
     this.current = new THREE.Vector3(0, 1.05, 28);
     this.bobOffset = new THREE.Vector2();
+    this.coyote = 0;
+    this.jumpBuffer = 0;
+    this.rayResult = new CANNON.RaycastResult();
+    this.camera.rotation.order = "YXZ";
+    this.camera.up.set(0, 1, 0);
 
     this.body = new CANNON.Body({
       mass: 78,
@@ -36,6 +69,8 @@ export class Player {
       linearDamping: 0.12,
       fixedRotation: true,
       material: new CANNON.Material({ friction: 0 }),
+      collisionFilterGroup: 2,
+      collisionFilterMask: 1,
     });
     this.body.allowSleep = false;
     this.body.updateMassProperties();
@@ -45,15 +80,18 @@ export class Player {
       this.keys.add(event.code);
       if (event.code === "Space") {
         event.preventDefault();
-        if (this.grounded && this.alive) this.body.velocity.y = 6.3;
+        this.jumpBuffer = JUMP_BUFFER;
       }
     };
     this.onKeyUp = (event) => this.keys.delete(event.code);
     this.onMouseMove = (event) => {
-      if (this.controls.isLocked) {
-        this.mouseDelta.x += event.movementX;
-        this.mouseDelta.y += event.movementY;
-      }
+      if (!this.controls.isLocked) return;
+      this.mouseDelta.x += event.movementX;
+      this.mouseDelta.y += event.movementY;
+      this.yaw -= event.movementX * LOOK_SENSITIVITY;
+      this.pitch -= event.movementY * LOOK_SENSITIVITY;
+      this.pitch = THREE.MathUtils.clamp(this.pitch, -Math.PI / 2 + 0.04, Math.PI / 2 - 0.04);
+      this.applyLook();
     };
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
@@ -64,8 +102,10 @@ export class Player {
     return this.body.position;
   }
 
-  get yaw() {
-    return this.camera.rotation.y;
+  applyLook() {
+    this.camera.up.set(0, 1, 0);
+    this.camera.rotation.order = "YXZ";
+    this.camera.rotation.set(this.pitch, this.yaw, 0);
   }
 
   teleport(position) {
@@ -86,12 +126,13 @@ export class Player {
     this.health = this.maxHealth;
     this.alive = true;
     this.keys.clear();
-    this.camera.rotation.set(0, 0, 0);
+    this.yaw = 0;
+    this.pitch = 0;
+    this.applyLook();
     this.teleport(spawn ?? new THREE.Vector3(0, 1.05, 28));
   }
 
   lock() {
-    // Browsers reject pointer lock outside a user gesture, so surface it instead of stalling.
     const element = this.controls.domElement;
     try {
       const request = element.requestPointerLock();
@@ -111,25 +152,73 @@ export class Player {
     }
   }
 
-  applyRecoil(pitch, yaw, roll) {
-    this.camera.rotation.x = THREE.MathUtils.clamp(this.camera.rotation.x - pitch, -Math.PI / 2, Math.PI / 2);
-    this.camera.rotation.y += yaw;
-    this.camera.rotation.z += roll;
+  applyRecoil(pitch, yaw) {
+    this.pitch = THREE.MathUtils.clamp(this.pitch - pitch, -Math.PI / 2 + 0.04, Math.PI / 2 - 0.04);
+    this.yaw += yaw;
+    this.applyLook();
+  }
+
+  raycast(from, to) {
+    this.rayResult.reset();
+    this.world.raycastClosest(from, to, { skipBackfaces: true, collisionFilterMask: 1 }, this.rayResult);
+    return this.rayResult.hasHit;
+  }
+
+  probeGround() {
+    const { x, y, z } = this.body.position;
+    const hit = this.raycast(new CANNON.Vec3(x, y, z), new CANNON.Vec3(x, y - 1.15, z));
+    return hit && this.rayResult.distance <= 1.1 && this.body.velocity.y <= 3;
+  }
+
+  tryStep() {
+    if (!this.moving && Math.hypot(this.body.velocity.x, this.body.velocity.z) < 0.8) return;
+    const { x, y, z } = this.body.position;
+    const fx = -Math.sin(this.yaw);
+    const fz = -Math.cos(this.yaw);
+    const ox = x + fx * 0.28;
+    const oz = z + fz * 0.28;
+    const blocked = this.raycast(
+      new CANNON.Vec3(ox, y - 0.45, oz),
+      new CANNON.Vec3(ox + fx * 0.55, y - 0.45, oz + fz * 0.55)
+    );
+    const headroom = !this.raycast(
+      new CANNON.Vec3(ox, y + STEP_HEIGHT, oz),
+      new CANNON.Vec3(ox + fx * 0.7, y + STEP_HEIGHT, oz + fz * 0.7)
+    );
+    if (blocked && headroom && this.coyote > 0) {
+      this.body.position.y += STEP_HEIGHT * 0.4;
+      this.body.velocity.y = Math.max(this.body.velocity.y, 3.4);
+    }
   }
 
   stepFixed(dt) {
     this.previous.copy(this.current);
 
-    this.grounded = this.world.contacts.some((contact) => {
+    const contactGround = this.world.contacts.some((contact) => {
       const involvesPlayer = contact.bi === this.body || contact.bj === this.body;
-      return involvesPlayer && Math.abs(contact.ni.y) > 0.55;
+      if (!involvesPlayer) return false;
+      const normalY = contact.bi === this.body ? -contact.ni.y : contact.ni.y;
+      return normalY > 0.5;
     });
+    this.grounded = this.probeGround() || contactGround;
+
+    if (this.grounded) this.coyote = COYOTE_TIME;
+    else this.coyote -= dt;
+    this.jumpBuffer -= dt;
 
     if (!this.alive) {
       this.body.velocity.x *= 0.85;
       this.body.velocity.z *= 0.85;
       this.current.set(this.body.position.x, this.body.position.y, this.body.position.z);
       return;
+    }
+
+    if (this.keys.has("Space")) this.jumpBuffer = JUMP_BUFFER;
+    if (this.jumpBuffer > 0 && this.coyote > 0) {
+      this.body.velocity.y = JUMP_SPEED;
+      this.jumpBuffer = 0;
+      this.coyote = 0;
+      this.grounded = false;
     }
 
     this.crouching = this.keys.has("KeyC") || this.keys.has("ControlLeft") || this.keys.has("ControlRight");
@@ -154,6 +243,7 @@ export class Player {
     const blend = 1 - Math.exp(-accel * dt);
     this.body.velocity.x = THREE.MathUtils.lerp(this.body.velocity.x, desired.x, blend);
     this.body.velocity.z = THREE.MathUtils.lerp(this.body.velocity.z, desired.z, blend);
+    this.tryStep();
 
     const horizontalSpeed = Math.hypot(this.body.velocity.x, this.body.velocity.z);
     const stepping = this.grounded && horizontalSpeed > 0.25;
@@ -171,7 +261,7 @@ export class Player {
     const y = THREE.MathUtils.lerp(this.previous.y, this.current.y, alpha);
     const z = THREE.MathUtils.lerp(this.previous.z, this.current.z, alpha);
     this.camera.position.set(x + this.bobOffset.x, y - 0.9 + this.eyeHeight + this.bobOffset.y, z);
-    this.camera.rotation.z *= Math.exp(-12 * dt);
+    this.applyLook();
     this.mouseDelta.multiplyScalar(Math.exp(-15 * dt));
   }
 

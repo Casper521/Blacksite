@@ -5,6 +5,7 @@ const API_TARGET = process.env.API_TARGET ?? "http://localhost:8787";
 export default defineConfig({
   server: {
     port: 5173,
+    host: true,
     open: true,
     proxy: {
       "/api": { target: API_TARGET, changeOrigin: true },
