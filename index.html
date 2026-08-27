@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b0c" />
+    <title>Blacksite // Tactical FPS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" crossorigin src="/assets/index-D6gENQK6.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-hz72n3P6.css">
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+
+      <div id="vignette"></div>
+      <div id="damage-overlay"></div>
+
+      <div id="hud" data-mode="campaign" aria-hidden="true">
+        <div class="mission-strip">
+          <span class="mission-label">OBJECTIVE</span>
+          <span id="objective-text">ELIMINATE HOSTILES</span>
+          <span id="objective-count" class="objective-count"><b>0</b> REMAINING</span>
+          <span id="sector-name" class="sector-name"></span>
+        </div>
+
+        <div class="gem-hud">
+          <i class="gem"></i><span id="gem-total">0</span>
+        </div>
+        <div id="gem-toast"></div>
+        <div id="net-status" class="hidden"></div>
+        <div id="killfeed"></div>
+        <div id="scoreboard" class="hidden"></div>
+
+        <div id="crosshair" class="crosshair">
+          <i class="top"></i><i class="right"></i><i class="bottom"></i><i class="left"></i>
+          <span class="dot"></span>
+        </div>
+        <div id="hitmarker" class="hitmarker"><i></i><i></i><i></i><i></i></div>
+
+        <div id="respawn-overlay" class="hidden">
+          <p class="eyebrow">OPERATOR DOWN</p>
+          <h2>RESPAWNING IN <span id="respawn-timer">3</span></h2>
+        </div>
+
+        <div class="health-panel">
+          <div class="health-top">
+            <span id="operator-name">OPERATOR</span>
+            <strong id="health-value">100</strong>
+          </div>
+          <div class="health-track"><div id="health-fill"></div></div>
+        </div>
+
+        <div class="ammo-panel">
+          <div class="weapon-name"><span id="weapon-label">M4A1 VECTOR</span> <span id="weapon-caliber">5.56 NATO</span></div>
+          <div class="ammo-line">
+            <strong id="ammo-current">30</strong>
+            <span class="divider">/</span>
+            <span id="ammo-reserve">150</span>
+          </div>
+          <div id="weapon-slots" class="weapon-slots"></div>
+          <div id="reload-prompt">R&nbsp;&nbsp;RELOAD</div>
+        </div>
+
+        <div class="controls-hint">
+          <span><kbd>WASD</kbd> MOVE</span>
+          <span><kbd>SHIFT</kbd> SPRINT</span>
+          <span><kbd>C</kbd> CROUCH</span>
+          <span><kbd>RMB</kbd> ADS</span>
+          <span><kbd>1–4</kbd> WEAPONS</span>
+          <span><kbd>R</kbd> RELOAD</span>
+        </div>
+      </div>
+
+      <div id="start-screen" class="screen">
+        <div class="scanline"></div>
+        <header class="lobby-top">
+          <div class="brand">BLACK<span>SITE</span></div>
+          <div class="gem-bank"><i class="gem"></i><span id="lobby-gems">0</span> GEMS</div>
+        </header>
+
+        <div class="lobby">
+          <section class="lobby-left">
+            <p class="eyebrow">JOINT TASK FORCE // URBAN TRAINING</p>
+            <h1>ARMORY</h1>
+            <div class="rule"></div>
+            <p id="playing-as" class="playing-as">PLAYING AS <b>OPERATOR</b> · SET YOUR NAME IN ACCOUNT</p>
+            <div id="loadout-rack" class="loadout-rack" aria-label="Current loadout"></div>
+            <div class="mode-actions">
+              <button id="deploy-campaign" type="button">
+                <span>DEPLOY SOLO</span>
+                <small>CLEAR A PROCEDURAL SECTOR OF HOSTILE BOTS</small>
+              </button>
+              <button id="deploy-pvp" type="button" class="ghost">
+                <span>CONNECT ONLINE PVP</span>
+                <small>MATCH AGAINST OTHER OPERATORS VIA RELAY</small>
+              </button>
+            </div>
+            <p id="lobby-status" data-tone="neutral">Earn gems for every hostile you drop, then spend them here.</p>
+            <div class="settings-row">
+              <button id="music-toggle" class="chip" type="button">MUSIC ON</button>
+              <input id="music-volume" type="range" min="0" max="100" step="1" aria-label="Music volume" />
+              <span id="account-chip" class="chip muted">GUEST · SAVED ON THIS DEVICE</span>
+            </div>
+            <div class="key-grid">
+              <span><kbd>WASD</kbd> MOVE</span>
+              <span><kbd>SHIFT</kbd> SPRINT</span>
+              <span><kbd>SPACE</kbd> JUMP</span>
+              <span><kbd>C / CTRL</kbd> CROUCH</span>
+              <span><kbd>LMB</kbd> FIRE</span>
+              <span><kbd>RMB</kbd> AIM</span>
+            </div>
+          </section>
+
+          <section class="lobby-right">
+            <div class="tabs">
+              <button data-tab="weapons" class="active" type="button">WEAPONS</button>
+              <button data-tab="skins" type="button">FINISHES</button>
+              <button data-tab="upgrades" type="button">UPGRADES</button>
+              <button data-tab="account" type="button">ACCOUNT</button>
+            </div>
+            <div id="weapon-grid" class="gear-grid"></div>
+            <div id="skin-grid" class="gear-grid hidden"></div>
+            <div id="upgrade-panel" class="upgrade-panel hidden"></div>
+            <div id="account-panel" class="account-panel hidden">
+              <label class="display-name-field">
+                PVP DISPLAY NAME
+                <input id="account-name" type="text" maxlength="14" autocomplete="nickname" spellcheck="false" />
+              </label>
+              <p class="account-copy">This name shows on the scoreboard, nameplates, and killfeed when you connect to PvP.</p>
+              <div id="account-guest">
+                <h3>SAVE YOUR PROGRESS</h3>
+                <p class="account-copy">
+                  Link an account to keep your gems, gear and upgrades across devices.
+                </p>
+                <form id="auth-form" autocomplete="on">
+                  <label>
+                    EMAIL
+                    <input id="auth-email" type="email" name="email" placeholder="operator@blacksite.gg" required />
+                  </label>
+                  <label>
+                    PASSWORD
+                    <input
+                      id="auth-password"
+                      type="password"
+                      name="password"
+                      placeholder="8+ characters"
+                      minlength="8"
+                      required
+                    />
+                  </label>
+                  <div class="auth-actions">
+                    <button id="auth-signin" type="submit">SIGN IN</button>
+                    <button id="auth-register" type="button" class="ghost">CREATE ACCOUNT</button>
+                  </div>
+                </form>
+                <div class="auth-divider"><span>OR</span></div>
+                <div id="google-button"></div>
+                <p id="google-note" class="account-note hidden"></p>
+              </div>
+              <div id="account-active" class="hidden">
+                <h3>ACCOUNT LINKED</h3>
+                <dl class="account-facts">
+                  <div><dt>DISPLAY NAME</dt><dd id="account-callsign">—</dd></div>
+                  <div><dt>EMAIL</dt><dd id="account-email">—</dd></div>
+                  <div><dt>SIGN-IN</dt><dd id="account-provider">—</dd></div>
+                  <div><dt>CLOUD SAVE</dt><dd id="account-sync">Synced</dd></div>
+                </dl>
+                <button id="auth-signout" type="button" class="ghost">SIGN OUT</button>
+              </div>
+              <p id="auth-status" class="account-note" role="status"></p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div id="ready-screen" class="screen hidden">
+        <div class="pause-card">
+          <p class="eyebrow">RELAY CONNECTED</p>
+          <h2>MATCH READY</h2>
+          <p id="ready-summary">Waiting for operators.</p>
+          <button id="enter-button" type="button">ENTER THE ARENA</button>
+        </div>
+      </div>
+
+      <div id="pause-screen" class="screen hidden">
+        <div class="pause-card">
+          <p class="eyebrow">SIMULATION PAUSED</p>
+          <h2>STANDBY</h2>
+          <button id="resume-button" type="button">RESUME OPERATION</button>
+          <button id="abort-button" type="button" class="ghost">RETURN TO ARMORY</button>
+        </div>
+      </div>
+
+      <div id="end-screen" class="screen hidden">
+        <div class="pause-card">
+          <p id="end-kicker" class="eyebrow">MISSION STATUS</p>
+          <h2 id="end-title">KIA</h2>
+          <p id="end-summary">The operation has ended.</p>
+          <div class="end-stats">
+            <div><span>ELIMINATIONS</span><b id="end-kills">0</b></div>
+            <div><span>GEMS EARNED</span><b id="end-gems">0</b></div>
+          </div>
+          <button id="restart-button" type="button">REDEPLOY</button>
+          <button id="armory-button" type="button" class="ghost">OPEN ARMORY</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
